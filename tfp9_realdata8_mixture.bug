@@ -1,0 +1,302 @@
+###########  Threat from pattern BUGS code.
+   # K Shoemaker July 2011
+
+# This model is intended to evaluate time series data for threatened species
+#   to help give weight to hypotheses about the most important source of
+#   threat for that species. (and when that threat was most in effect?)
+
+#  note: some BUGS code borrowed from Bijak 2006
+
+#  added a "threat blend model" to evaluate this option
+
+#  Q: does it make sense to have a null model- or should this be used only when it is pretty clear there is a threat?
+   #  still it's a little disconcerting that the habitat loss model is chosen preferentially for low harvest scenarios...
+ 
+
+###### Models to consider:  
+
+# 1)   Null model  (no decline)
+# 2)   Habitat loss (carrying capacity is reduced during the time series)
+# 3)   Over-harvesting (growth rate is reduced via harvest during the time series...) (fractional harvest)
+
+# this version- no constant harvest option
+
+########  START MODEL 
+      
+model {
+                               # DEFINE PRIORS AND DERIVED PARAMETERS
+
+                          #    DEFINE K
+KPlay <- startabun/10      
+lim1 <- startabun-KPlay        # constrains K to be near to initial population size...
+lim2 <- startabun+KPlay
+lim3 <- startabun*1.5
+K0[1] ~ dunif(lim1,lim3)       # free parameter : constant K, model 1 (constant K null model)
+K0[2] <- startabun             # fixed parameter: initial K, model 2 (habitat loss, strong DD)
+K0[3] ~ dunif(startabun,lim3)  # free parameter: constant K, model 3 (const frac harvest) 
+
+                        #     DEFINE GROWTH RATE
+
+for(m in 1:10){               # some plausible values for max intrinsic rate of growth, model 1, null 
+  prob10[m] <- 1/10
+}
+candbeta1[1] <- lowbeta
+candbeta1[2] <- ((highbeta2-lowbeta)/9)*1            # highbeta2 -- defines high growth rate for null and habitat loss v1...
+candbeta1[3] <- ((highbeta2-lowbeta)/9)*2
+candbeta1[4] <- ((highbeta2-lowbeta)/9)*3
+candbeta1[5] <- ((highbeta2-lowbeta)/9)*4
+candbeta1[6] <- ((highbeta2-lowbeta)/9)*5
+candbeta1[7] <- ((highbeta2-lowbeta)/9)*6
+candbeta1[8] <- ((highbeta2-lowbeta)/9)*7
+candbeta1[9] <- ((highbeta2-lowbeta)/9)*8
+candbeta1[10] <- highbeta2
+candbeta[1] ~ dcat(prob10[1:10])
+
+
+
+for(m in 1:10){               # some plausible values for max intrinsic rate of growth, model2, (habitat loss)
+  prob11[m] <- 1/10				# shouldn't take on very low values, since needs to track declining K
+}
+candbeta2[1] <- medbeta
+candbeta2[2] <- medbeta + ((highbeta2-medbeta)/9)*1
+candbeta2[3] <- medbeta + ((highbeta2-medbeta)/9)*2
+candbeta2[4] <- medbeta + ((highbeta2-medbeta)/9)*3
+candbeta2[5] <- medbeta + ((highbeta2-medbeta)/9)*4
+candbeta2[6] <- medbeta + ((highbeta2-medbeta)/9)*5
+candbeta2[7] <- medbeta + ((highbeta2-medbeta)/9)*6
+candbeta2[8] <- medbeta + ((highbeta2-medbeta)/9)*7
+candbeta2[9] <- medbeta + ((highbeta2-medbeta)/9)*8
+candbeta2[10] <- highbeta2
+candbeta[2] ~ dcat(prob11[1:10])
+candbeta[6] ~ dcat(prob11[1:10])
+
+
+
+for(m in 1:10){               # some plausible values for max intrinsic rate of growth, model 3 (harvest)
+  prob12[m] <- 1/10
+}
+candbeta3[1] <- lowbeta
+candbeta3[2] <- ((highbeta-lowbeta)/9)*1    # was zero to lowbeta: might want to change back
+candbeta3[3] <- ((highbeta-lowbeta)/9)*2
+candbeta3[4] <- ((highbeta-lowbeta)/9)*3
+candbeta3[5] <- ((highbeta-lowbeta)/9)*4
+candbeta3[6] <- ((highbeta-lowbeta)/9)*5
+candbeta3[7] <- ((highbeta-lowbeta)/9)*6
+candbeta3[8] <- ((highbeta-lowbeta)/9)*7
+candbeta3[9] <- ((highbeta-lowbeta)/9)*8
+candbeta3[10] <- highbeta
+candbeta[3] ~ dcat(prob12[1:10])
+candbeta[5] ~ dcat(prob12[1:10])  # constant number harvested
+
+
+for(m in 1:10){               # some plausible values for max intrinsic rate of growth, model 2b (habitat loss, ceiling DD)
+  prob13[m] <- 1/10
+}
+candbeta2b[1] <- lowbeta
+candbeta2b[2] <- ((highbeta2-lowbeta)/9)*1
+candbeta2b[3] <- ((highbeta2-lowbeta)/9)*2
+candbeta2b[4] <- ((highbeta2-lowbeta)/9)*3
+candbeta2b[5] <- ((highbeta2-lowbeta)/9)*4
+candbeta2b[6] <- ((highbeta2-lowbeta)/9)*5
+candbeta2b[7] <- ((highbeta2-lowbeta)/9)*6
+candbeta2b[8] <- ((highbeta2-lowbeta)/9)*7
+candbeta2b[9] <- ((highbeta2-lowbeta)/9)*8
+candbeta2b[10] <- highbeta2
+candbeta[4] ~ dcat(prob13[1:10])
+
+beta[1] <- candbeta1[candbeta[1]]   # max growth rate under model 1 (null) 
+beta[2] <- candbeta2[candbeta[2]]   # max  growth rate under model 2 (habitat loss)
+beta[3] <- candbeta3[candbeta[3]]   # max  growth rate under model 3 (with fractional harvest)
+beta[4] <- candbeta2b[candbeta[4]]  # real growth rate under model 2b (habitat loss with ceiling DD)
+beta[5] <- candbeta3[candbeta[5]]   # max growth rate under model 3b (harvest with approximately constant numbers)
+beta[6] <- candbeta2[candbeta[6]]   # max growth rate under model 2b (habitat loss with ceiling DD, above carrying capacity)
+
+
+                # Null model slope parameter... should make the null model more competitive...  "designed to overfit- or to soak up excess variance"
+
+                              #  Model 2: habitat loss    
+nullslope2 ~ dunif(nulllow,nullhigh)        # *************
+for(g in 1:gentime){
+  for (t in 1:nyears) {
+    nullslope[g,t] <- nullslope2 * gentime
+  }
+} 
+
+                        #  THREAT PARAMETERS
+                              #  Model 2: habitat loss    
+hlrate2 ~ dunif(hlhigh,hllow)
+hlrate3 ~ dunif(hlhigh,hllow) 
+for(g in 1:gentime){
+  for (t in 1:nyears) {
+    hlrate[g,t] <- hlrate2 * gentime
+    hlrateb[g,t] <- hlrate3 * gentime	
+  }
+}
+
+prob14[1] <- 0.5             #  even prior chance of ricker density dependence (0) vs. ceiling (1) 
+prob14[2] <- 0.5
+candDD1[1] <- 0
+candDD1[2] <- 1
+candDD ~ dcat(prob14[1:2])   
+hltype <- candDD1[candDD]     # DD type for the habitat loss scenario
+
+                                  #  FRACTIONAL HARVEST
+fracharv2 ~ dunif(0.01,0.2)     # fractional harvest per year   # changed from 0.2 max...   
+#mixfharv2 ~ dunif(0.01,0.2)      
+for(g in 1:gentime){
+  for (t in 1:nyears) { 
+    fracharv[g,t] <- 1 - pow((1-fracharv2),gentime)   # fractional harvest per generation 
+    #mixfharv[g,t] <- 1 - pow((1-mixfharv2),gentime)
+  }
+}
+
+constharv2 ~ dunif(hrlow,hrhigh)     # constant harvest per year  # was (hrlow,hrhigh)
+ #mixcharv2 ~ dunif(hrlow,hrhigh) 
+for(g in 1:gentime){
+  for (t in 1:nyears) { 
+    constharv[g,t] <- constharv2 * gentime
+    #mixcharv[g,t] <- mixcharv2 * gentime 
+  }
+}
+
+prob15[1] <- 0.5     #  even prior chance of fractional harvest (0) vs. absolute harvest (1)  
+prob15[2] <- 0.5
+candharv1[1] <- 0
+candharv1[2] <- 1
+candharv ~ dcat(prob15[])   
+harvtype <- candharv1[candharv]
+
+
+prob16[1] <- 0.5                 #  even prior chance of random walk (0) vs. null with carrying capacity (1)  
+prob16[2] <- 0.5
+candnull1[1] <- 0
+candnull1[2] <- 1
+candnull ~ dcat(prob16[])   
+nulltype <- candnull1[candnull]
+
+                                                   # THRESHOLDS for start and length of threat, all models
+for(k in 1:nmodels){
+  startyear[k]  ~ dcat(startyear2[1:nyears])    # free parameter, threshold year where the growth rate begins to decline...
+  length[k]     ~ dcat(length2[1:nyears])       # free parameter, length of threat event
+}
+
+for(k in 1:1){                             # set indicator of whether threat is in effect
+  for (t in 1:nyears) {
+    switch[k,t]  <- 0       # no threat for the null models (just model 1 for now)...
+  }
+}
+
+for(k in 2:nmodels){                             # set indicator of whether threat is in effect
+  for (t in 1:nyears) {
+    switch[k,t]      <- step(t-startyear[k]) * step((startyear[k]+length[k])-(t+1))  # takes value of 1 when threat is in effect.
+    switch.new[k,t]  <- step(t-cut(startyear[k])) * step((cut(startyear[k])+cut(length[k]))-(t+1))   
+  }
+}
+
+                                # ENVIRONMENTAL VARIABILITY  
+for (k in 1:nmodels) {               
+   tau[k] <-  1/pow(sd[k],2)   
+   sd[k] ~ dunif(sdlow,sdhigh) 
+}
+
+#########################################################################
+                                ########################## MODEL SELECTION
+                                                     # assign prior model weights: initially, each model gets equal weight...
+p[1] <- 15/30   # null models                        # try to assign weight based on occam's razor- reduce weight for models with more parameters?
+p[2] <- 7/30  	# habitat loss...
+p[3] <- 8/30   # harvest model
+
+mod ~ dcat(p[]) 
+
+##############################################
+###################################
+                                # DEFINE DATA
+for(g in 1:gentime){
+  for (t in 1:nyears) { 
+    for (k in 1:nmodels) { 
+      logN[g,t,k] <- log(y[g,t])      # convert raw data to log scale
+      N[g,t,k]    <- y[g,t]           # and replicate data once for each candidate model
+    }
+    logNav[g,t] <- log(y[g,t])        #  ... and replicate data once more for averaged model... 
+    Nav[g,t]    <- y[g,t]
+  }
+}
+
+##################################
+                               # DEFINE LIKELIHOOD FUNCTIONS      
+
+for(g in 1:gentime){               # loop through data
+  K[g,1,2] <- K0[2]
+  Kb[g,1,2] <- K0[2]
+  
+  for(k in 1:nmodels){ 
+    logN.new[g,1,k] <- logN[g,1,k]
+    N.new[g,1,k] <- N[g,1,k]
+  }  
+  
+  for (t in 2:nyears) {
+                                            #####################################################
+                                                                      # MODEL 1: constant K (2 params) / threat = none   
+                                                                      #   external data: informative prior on carrying capacity?                         
+    K[g,t,1] <- K0[1] + nullslope[g,t]*realtime[g,t]
+    Kgrowth[g,t] <- beta[1]*((K[g,t,1]-N[g,t-1,1])/K[g,t,1])
+    Kgrowth.new[g,t] <- beta[1]*((K[g,t,1]-N.new[g,t-1,1])/K[g,t,1])
+    logNexp[g,t,1] <- logN[g,t-1,1] + (Kgrowth[g,t]) # + (nulltype*0)  # (1-nulltype)*    # note: zero expected growth for random walk model
+    logNexp.new[g,t,1] <- logN.new[g,t-1,1] + (Kgrowth.new[g,t]) # + (nulltype*0)  # (1-nulltype)*
+         
+                                            #####################################################
+                                                                      # MODEL 2: threat = habitat loss
+                                                  
+    K[g,t,2]  <- K0[2] + hlrate[g,t]*realhabitat[g,t]  
+    Kb[g,t,2] <- K0[2] + hlrateb[g,t]*realhabitat[g,t]    
+    rickergrowth[g,t] <- beta[2]*((K[g,t,2]-N[g,t-1,2])/K[g,t,2])  
+    rickergrowth.new[g,t] <- beta[2]*((K[g,t,2]-N.new[g,t-1,2])/K[g,t,2])    # can lead to problems for extreme harvest scenarios...  maybe try to limit this to 10 or -10??
+    ceilinggrowth[g,t] <- step(Kb[g,t,2]-N[g,t-1,2])*beta[4] + step(N[g,t-1,2]-Kb[g,t,2])*(beta[6]*((Kb[g,t,2]-N[g,t-1,2])/Kb[g,t,2])) 
+    ceilinggrowth.new[g,t] <- step(Kb[g,t,2]-N.new[g,t-1,2])*beta[4] + step(N.new[g,t-1,2]-Kb[g,t,2])*(beta[6]*((Kb[g,t,2]-N.new[g,t-1,2])/Kb[g,t,2]))
+    logNexp[g,t,2] <- logN[g,t-1,2] + ((1-hltype) * rickergrowth[g,t]) + (hltype * ceilinggrowth[g,t])        
+    logNexp.new[g,t,2] <- min(6.2,max(-1,logN.new[g,t-1,2] + ((1-hltype) * rickergrowth.new[g,t]) + (hltype * ceilinggrowth.new[g,t])))
+
+                                            #####################################################
+                                                                      # MODEL 3: constant fraction harvested (2 params)  / threat = overharvesting
+                                                                      #    external data: not sure... 
+    harvrate3[g,t]  <- log(1-fracharv[g,t]) * switch[3,t-1]
+    harvrate3.new[g,t]  <- log(1-fracharv[g,t]) * switch[3,t-1]
+    constharv3[g,t] <- step(N[g,t-1,3]-constharv[g,t]) * (constharv[g,t]*switch[3,t-1])-0.05     # if the population is less than the harvest rate, then no harvest 
+    constharv3.new[g,t] <- step(N.new[g,t-1,3]-constharv[g,t]) * (constharv[g,t]*switch[3,t-1])-0.05   # if the population is less than the harvest rate, then no harvest 
+    logNexp[g,t,3]  <- log(N[g,t-1,3]-constharv3[g,t]) + harvrate3[g,t] + beta[3]*((K0[3]-N[g,t-1,3])/K0[3])   # (1-harvtype) * # harvtype * 
+    logNexp.new[g,t,3]  <- log(N.new[g,t-1,3]-constharv3.new[g,t]) + harvrate3.new[g,t] + beta[3]*((K0[3]-N.new[g,t-1,3])/K0[3])  # (1-harvtype) *  # harvtype * 
+
+                                            #####################################################
+                                                                      # THREAT MIXTURE MODEL: both threats in effect
+    #harvratemix[g,t]  <- log(1-mixfharv[g,t]) * switch[3,t-1]
+    #harvratemix.new[g,t]  <- log(1-mixfharv[g,t]) * switch[3,t-1]
+    #constharvmix[g,t] <- step(N[g,t-1,3]-mixcharv[g,t]) * (mixcharv[g,t]*switch[3,t-1])-0.01     # if the population is less than the harvest rate, then no harvest 
+    #constharv3.new[g,t] <- step(N.new[g,t-1,3]-mixcharv[g,t]) * (mixcharv[g,t]*switch[3,t-1])-0.01   # if the population is less than the harvest rate, then no harvest 
+    #logNexp[g,t,3]  <- ((1-harvtype) * (logN[g,t-1,3] + harvrate3[g,t])) + (harvtype * log(N[g,t-1,3]-constharv3[g,t])) + beta[3]*((K0[3]-N[g,t-1,3])/K0[3])    
+    #logNexp.new[g,t,3]  <- (1-harvtype) * (logN.new[g,t-1,3] + harvrate3.new[g,t]) + (harvtype * log(N.new[g,t-1,3]-constharv3.new[g,t])) + beta[3]*((K0[3]-N.new[g,t-1,3])/K0[3])  # # 
+                                         	#####################################################
+                                                                      # DATA INTERFACE (evaluate data likelihood)
+
+    for (k in 1:nmodels) {                              
+      logN[g,t,k]  ~  dnorm(logNexp[g,t,k], tau[k])    #  DATA NODE (remember, had been converted)
+      tau.new[g,t,k] <- cut(tau[k])
+      logN.new[g,t,k] ~ dnorm(logNexp.new[g,t,k], tau[k])              #  predict Nt based on the fit parameters for each model
+      logN.new2[g,t,k] ~ dnorm(logNexp[g,t,k], tau[k])     # tau.new[g,t,k]
+      N.new[g,t,k] <- exp(logN.new[g,t,k])
+    }
+    logNav[g,t] ~ dnorm(logNexp[g,t,mod], tau[mod])          #  dnegbin(param[g,t,mod],tau[mod])      #dnegbin(param[g,t,mod],tau[mod])                  # averaged model: A DATA NODE 
+  }
+}
+
+##### storage variables for PVA
+#threat_final <- switch[mod,(nyears-1)]  # if threat still in effect at t-1, then continue in PVA
+
+
+}   #  END MODEL
+########################################
+
+
+
+
+
+  
